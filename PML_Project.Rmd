@@ -1,0 +1,125 @@
+---
+title: 'Practical Machine Learning: Prediction Assignment'
+author: "Dale Stewart"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, cache = TRUE)
+```
+
+## Overview
+
+In this assignment we will take a both a training and testing set of data that calculates how "well" subjects performed a barbell curl.  In the end we will apply the chosen best model to 20 different test cases to see how closely the fitted model will predict the effectiveness of the subject's motion on the barbell curl.
+
+## Processing Data
+
+First we need to bring in the data and clean it up a little for our purposes.
+
+```{r}
+#load package
+library(caret)
+
+# set working directory
+setwd('C:/Users/dale.stewart/datasciencecoursera/PML')
+
+# download data after checking to see if file exists
+
+if(!file.exists("pml-training.csv")){
+      download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+            destfile = "pml-training.csv")
+}
+
+if(!file.exists("pml-testing.csv")){
+      download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+            destfile = "pml-testing.csv")
+}
+# load data into training and testing sets
+train_in <- read.csv("pml-training.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+validation <- read.csv("pml-testing.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+
+```
+
+We first need to split the training data into training and testing so that we can check out of sample error after we choose the model.  Seventy percent (70%) of the training data will be used to develop the model and then the other 30% will be used to test the model.
+
+```{r} 
+
+set.seed(127)
+training_sample <- createDataPartition(y = train_in$classe, p=0.7, list = FALSE)
+training <- train_in[training_sample, ]
+testing <- train_in[-training_sample, ]
+
+
+```
+
+Next we need to grab the names of the columns that we will use for our model. We will eliminate any data that has N/A for all entries of that particular column.  This leaves us with 52 columns to train the model on.
+
+```{r} 
+
+all_zero_colnames <- sapply(names(validation), function(x) all(is.na(validation[,x])==TRUE))
+nznames <- names(all_zero_colnames)[all_zero_colnames==FALSE]
+nznames <- nznames[-(1:7)]
+nznames <- nznames[1:(length(nznames)-1)]
+
+print(nznames)
+
+
+```
+
+##Model building and cross validation
+
+Here we will use random forest decision trees to create the model.  We also use cross-validation in this step with k=3.
+
+
+```{r}
+
+# split training set into partitions
+
+library(randomForest)
+
+fitControl <- trainControl(method = 'cv', number = 3)
+
+model_rf <- train(
+     classe ~.,
+     data = training[, c('classe', nznames)],
+     trControl = fitControl,
+     method = 'rf',
+     ntree = 100
+)
+
+```
+
+##Model Assessment (Out of Sample Error)
+
+We can apply this model to the test data to see what kind of out of sample error we get by looking at the confusion matrix.
+
+```{r}
+
+pred_RF <- predict(model_rf, newdata = testing)
+cm_RF <- confusionMatrix(pred_RF, testing$classe)
+
+print(cm_RF$overall[1])
+
+
+```
+
+The results above show that the random forest model provides a 99.4$ level of accuracy for the test set.
+
+##Application of Model to Validation Set
+
+The model is now applied to the 20 observations of new data to produce a prediction for what type of motion occurred with the barbell.  These 20 predictions all were correct according to the quiz entry.
+
+``` {r}
+predValidation <- predict(model_rf, newdata=validation)
+PredictionResults <- data.frame(
+    problem_id=validation$problem_id,
+    predicted = predValidation
+)
+
+print(PredictionResults)
+
+```
+
+
+
